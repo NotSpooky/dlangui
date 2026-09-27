@@ -389,6 +389,15 @@ interface UnknownWindowMessageHandler {
     bool onUnknownWindowMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, ref LRESULT result);
 }
 
+/// Returns the size of a window with the given styles whose client area is `clientSize` (dlangui draws its own menu, so no native menu is counted)
+private Point clientToWindowSize(Point clientSize, DWORD style, DWORD exStyle) {
+    assert(clientSize.x >= 0 && clientSize.y >= 0, "negative client size");
+    RECT rc = RECT(0, 0, clientSize.x, clientSize.y);
+    if (!AdjustWindowRectEx(&rc, style, FALSE, exStyle))
+        throw new Exception("AdjustWindowRectEx failed, GetLastError=%d".format(GetLastError()));
+    return Point(rc.right - rc.left, rc.bottom - rc.top);
+}
+
 class Win32Window : Window {
     Win32Platform _platform;
 
@@ -440,15 +449,16 @@ class Win32Window : Window {
         if (flags & WindowFlag.Borderless) {
             ws = WS_POPUP | WS_SYSMENU;
         }
-
+        // _dx and _dy are the client size, while CreateWindowW expects the size of the whole window
+        const windowSize = clientToWindowSize(Point(_dx, _dy), ws, 0);
 
         _hwnd = CreateWindowW(toUTF16z(WIN_CLASS_NAME),      // window class name
                             toUTF16z(windowCaption),  // window caption
                             ws,  // window style
                             x,        // initial x position
                             y,        // initial y position
-                            _dx,        // initial x size
-                            _dy,        // initial y size
+                            windowSize.x, // initial x size
+                            windowSize.y, // initial y size
                             parenthwnd,                 // parent window handle
                             null,                 // window menu handle
                             _hInstance,           // program instance handle
@@ -472,8 +482,8 @@ class Win32Window : Window {
                         ws,  // window style
                         x,        // initial x position
                         y,        // initial y position
-                        _dx,        // initial x size
-                        _dy,        // initial y size
+                        windowSize.x, // initial x size
+                        windowSize.y, // initial y size
                         parenthwnd,                 // parent window handle
                         null,                 // window menu handle
                         _hInstance,           // program instance handle
@@ -496,7 +506,9 @@ class Win32Window : Window {
 
         RECT rect;
         GetWindowRect(_hwnd, &rect);
-        handleWindowStateChange(WindowState.unspecified, Rect(rect.left, rect.top, _dx, _dy));
+        RECT clientRect;
+        GetClientRect(_hwnd, &clientRect);
+        handleWindowStateChange(WindowState.unspecified, Rect(rect.left, rect.top, clientRect.right, clientRect.bottom));
 
         // HACK: This allows drag and drop when ran as admin. Preferable solution is to implement IDragDrop as MS suggests
         // See https://stackoverflow.com/questions/64485600/wm-dropfiles-not-called-on-x64
@@ -792,18 +804,23 @@ class Win32Window : Window {
             UINT flags = SWP_NOOWNERZORDER | SWP_NOZORDER;
             if (!activate)
                 flags |= SWP_NOACTIVATE;
+            // newWindowRect.right and newWindowRect.bottom are the client size, while SetWindowPos expects the size of the whole window
+            Point windowSize;
+            if (newWindowRect.bottom != int.min && newWindowRect.right != int.min)
+                windowSize = clientToWindowSize(Point(newWindowRect.right, newWindowRect.bottom),
+                    cast(DWORD)GetWindowLongW(_hwnd, GWL_STYLE), cast(DWORD)GetWindowLongW(_hwnd, GWL_EXSTYLE));
             if (newWindowRect.top == int.min || newWindowRect.left == int.min) {
                 // no position specified
                 if (newWindowRect.bottom != int.min && newWindowRect.right != int.min) {
                     // change size only
-                    SetWindowPos(_hwnd, NULL, 0, 0, newWindowRect.right + 2 * GetSystemMetrics(SM_CXDLGFRAME), newWindowRect.bottom + GetSystemMetrics(SM_CYCAPTION) + 2 * GetSystemMetrics(SM_CYDLGFRAME), flags | SWP_NOMOVE);
+                    SetWindowPos(_hwnd, NULL, 0, 0, windowSize.x, windowSize.y, flags | SWP_NOMOVE);
                     rectChanged = true;
                     res = true;
                 }
             } else {
                 if (newWindowRect.bottom != int.min && newWindowRect.right != int.min) {
                     // change size and position
-                    SetWindowPos(_hwnd, NULL, newWindowRect.left, newWindowRect.top, newWindowRect.right + 2 * GetSystemMetrics(SM_CXDLGFRAME), newWindowRect.bottom + GetSystemMetrics(SM_CYCAPTION) + 2 * GetSystemMetrics(SM_CYDLGFRAME), flags);
+                    SetWindowPos(_hwnd, NULL, newWindowRect.left, newWindowRect.top, windowSize.x, windowSize.y, flags);
                     rectChanged = true;
                     res = true;
                 } else {
