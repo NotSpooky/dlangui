@@ -870,7 +870,8 @@ class Win32Window : Window {
 
     HICON _icon;
 
-    uint _cursorType;
+    // arrow until a widget sets another one; a window below a modal window gets no mouse events to do so
+    uint _cursorType = CursorType.Arrow;
 
     HANDLE[ushort] _cursorCache;
 
@@ -889,8 +890,7 @@ class Win32Window : Window {
             case None:
                 winCursor = null;
                 break;
-            case NotSet:
-                break;
+            case NotSet: // no override, e.g. after overrideCursorType(CursorType.NotSet)
             case Arrow:
                 winCursor = loadCursor(IDC_ARROW);
                 break;
