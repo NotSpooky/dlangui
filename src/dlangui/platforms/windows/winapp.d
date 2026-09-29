@@ -1690,6 +1690,11 @@ LRESULT WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 //window.handleUnknownWindowMessage(message, wParam, lParam);
             }
             return 0;
+        case WM_CAPTURECHANGED:
+            // capture was released elsewhere (e.g. show()), so take it again on the next mouse move
+            if (window !is null)
+                window._mouseTracking = false;
+            break;
         case WM_DESTROY:
             if (window !is null) {
                 //window.handleUnknownWindowMessage(message, wParam, lParam);
