@@ -1861,6 +1861,10 @@ LRESULT WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                     return 0; // prevent closing
                 }
                 Log.d("WM_CLOSE: closing window ");
+                // hand activation back to the owner: Windows only does so itself for WS_POPUP windows,
+                // otherwise it activates the next window in Z order, which may belong to another application
+                if (window._w32parent !is null && GetActiveWindow() == hwnd)
+                    SetActiveWindow(window._w32parent._hwnd);
                 //destroy(window);
             }
             // default handler inside DefWindowProc will close window
