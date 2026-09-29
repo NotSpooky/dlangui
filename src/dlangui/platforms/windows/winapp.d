@@ -1090,7 +1090,8 @@ class Win32Window : Window {
                 ReleaseCapture();
             }
         }
-        if (message != WM_MOUSELEAVE && !_mouseTracking) {
+        // a window below a modal one ignores mouse input, and capturing it would take the input from the modal window
+        if (message != WM_MOUSELEAVE && !_mouseTracking && !hasModalWindowsAbove()) {
             if (x >=0 && y >= 0 && x < _dx && y < _dy) {
                 debug(DebugMouseEvents) Log.d("Win32Window.onMouse Setting capture");
                 _mouseTracking = true;
