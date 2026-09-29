@@ -1717,6 +1717,8 @@ LRESULT WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 //window.handleUnknownWindowMessage(message, wParam, lParam);
                 window.onDestroy();
             }
+            // the window is no longer in the map; avoid "Cannot find window in map" on WM_NCDESTROY
+            SetWindowLongPtr(hwnd, GWLP_USERDATA, 0);
             if (w32platform.windowCount == 0 && isInitialized)
                 PostQuitMessage(0);
             return 0;
