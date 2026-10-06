@@ -996,6 +996,8 @@ class Win32Window : Window {
     }
 
     private bool _mouseTracking;
+    /// part of a wheel notch received but not scrolled yet (see wheelSteps)
+    private int _wheelRemainder;
     private bool onMouse(uint message, uint flags, short x, short y) {
         debug(DebugMouseEvents) Log.d("Win32 Mouse Message ", message, " flags=", flags, " x=", x, " y=", y);
         MouseButton button = MouseButton.None;
@@ -1046,8 +1048,13 @@ class Win32Window : Window {
                 break;
             case WM_MOUSEWHEEL:
                 {
+                    WheelSteps steps = wheelSteps(_wheelRemainder, cast(short)(flags >> 16));
+                    _wheelRemainder = steps.remainder;
+                    // less than a whole notch so far: nothing to scroll yet
+                    if (steps.notches == 0)
+                        return true;
                     action = MouseAction.Wheel;
-                    wheelDelta = (cast(short)(flags >> 16)) / 120;
+                    wheelDelta = steps.notches;
                     POINT pt;
                     pt.x = x;
                     pt.y = y;
@@ -1213,6 +1220,41 @@ class Win32Window : Window {
         invalidate();
     }
 
+}
+
+/// Whole wheel notches of a WM_MOUSEWHEEL message, and the part of a notch left for the next one
+struct WheelSteps {
+    /// notches to scroll, positive when the wheel moves away from the user
+    short notches;
+    /// part of a notch kept for the next message, between -WHEEL_DELTA and WHEEL_DELTA
+    int remainder;
+}
+
+/// Adds the delta of a WM_MOUSEWHEEL message to the remainder of the previous ones.
+/// Precision touchpads send deltas smaller than WHEEL_DELTA, which only scroll once they add up
+/// to a whole notch. Changing direction drops the remainder, so the new direction applies at once.
+WheelSteps wheelSteps(int remainder, short delta) pure nothrow @safe @nogc {
+    assert(remainder > -WHEEL_DELTA && remainder < WHEEL_DELTA);
+    int total = remainder * delta < 0 ? delta : remainder + delta;
+    return WheelSteps(cast(short)(total / WHEEL_DELTA), total % WHEEL_DELTA);
+}
+
+unittest {
+    // touchpad: small deltas add up to a notch, and the rest waits for the next messages
+    WheelSteps steps = wheelSteps(0, 40);
+    assert(steps == WheelSteps(0, 40));
+    steps = wheelSteps(steps.remainder, 40);
+    steps = wheelSteps(steps.remainder, 50);
+    assert(steps == WheelSteps(1, 10));
+    steps = wheelSteps(0, -30);
+    steps = wheelSteps(steps.remainder, -100);
+    assert(steps == WheelSteps(-1, -10));
+    // mouse wheel: whole notches in both directions
+    assert(wheelSteps(0, WHEEL_DELTA) == WheelSteps(1, 0));
+    assert(wheelSteps(0, -2 * WHEEL_DELTA) == WheelSteps(-2, 0));
+    // changing direction drops what was left
+    assert(wheelSteps(100, -30) == WheelSteps(0, -30));
+    assert(wheelSteps(-100, WHEEL_DELTA) == WheelSteps(1, 0));
 }
 
 class Win32Platform : Platform {
